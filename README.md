@@ -17,7 +17,14 @@ The web app needs no account and no API key. Browsers require HTTPS (or localhos
 
 ### CLI
 
-Use Node.js 22+ from the repository root:
+Use Node.js 22+ from the repository root. For PNG, install the pinned renderer once, then generate the bilingual example offline:
+
+```sh
+npm --prefix connector ci --ignore-scripts
+node plan-walk.mjs --demo --choices --minutes 30 --lang bilingual --png --output waitwalk-demo.png
+```
+
+The following SVG and route-data commands do not require the PNG package:
 
 ```sh
 node plan-walk.mjs --demo --choices --svg --minutes 30 > waitwalk-demo.svg
@@ -26,9 +33,11 @@ node plan-walk.mjs --live --lat=47.6205 --lon=-122.3493 --choices --minutes 30
 node --test test/*.test.mjs
 ```
 
-`--choices` produces one map's 30/60 comparison. Without `--choices` the CLI plans to a single 15–90 minute budget. Use `--svg` for a shareable image or `--geojson` for route data. The Seattle Center example is a public landmark, not a saved user location.
+`--choices` produces one map's 30/60 comparison. Without `--choices` the CLI plans to a single 15–90 minute budget. Use `--lang bilingual` for bilingual headings and demo labels; original place names are preserved. Use `--svg` for editable graphics or `--geojson` for route data. The Seattle Center example is a public landmark, not a saved user location.
 
 ## Ask in your own AI chat
+
+**Testing in Muse?** [Copy this one-shot prompt](agent-kit/waitwalk/MUSE-PROMPT.md) or open the [official bilingual demo PNG](https://github.com/jcheng14/waitwalk/releases/download/v0.1.1/waitwalk-demo-bilingual.png). The demo image is pre-rendered from WaitWalk’s fictional sample and does not use your location.
 
 See [the agent setup instructions](agent-kit/SETUP.md) and the [MCP adapter](connector/README.md). The map engine is independent of any AI account. Each assistant has its own install or connector requirements; downloading this source does not change any assistant's chat behavior until configured. The web app remains available without a connector.
 

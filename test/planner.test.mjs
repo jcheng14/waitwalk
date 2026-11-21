@@ -74,3 +74,18 @@ test('one visual includes two independently budgeted choices and ordered waypoin
  const empty=planChoices(fromOsm({elements:[home]}),{origin,minutes:30});
  assert.deepEqual(empty.unavailable,[30,60]);assert.match(renderMap(empty),/30 min window · No fit/);
 });
+
+test('bilingual map localizes interface and demos, preserves mapped names, and remains deterministic',()=>{
+ const g=demoGraph(),p=planChoices(g,{origin,minutes:30,label:'Alder & Main'});
+ const en=renderMap(p,g.mapWays),zh=renderMap({...p,demo:true,lang:'bilingual'},g.mapWays);
+ assert.doesNotMatch(en,/散步寻宝图|我在这里/);
+ for(const label of ['散步寻宝图','我在这里','30分钟可用','60分钟可用','Lantern Espresso / 灯笼咖啡馆','Creek Footbridge / 溪上步桥','8 min 停留','虚构街区'])assert.ok(zh.includes(label),label);
+ assert.equal(zh,renderMap({...p,demo:true,lang:'bilingual'},g.mapWays));
+ const source=fromOsm({elements:[home,{...end,tags:{name:'Real Café',amenity:'cafe','name:zh-Hans':'真实咖啡馆'}},way(10,[1,2],{highway:'footway'})]});
+ const live=planChoices(source,{origin,minutes:30});
+ const localized=renderMap({...live,lang:'bilingual'},source.mapWays);
+ assert.match(localized,/Real Café \/ 真实咖啡馆/);
+ assert.match(localized,/OpenStreetMap contributors/);
+ const noNameZh=fromOsm({elements:[home,end,way(10,[1,2],{highway:'footway'})]});
+ assert.doesNotMatch(renderMap({...planChoices(noNameZh,{origin,minutes:30}),lang:'bilingual'},noNameZh.mapWays),/Test Café \/ /);
+});

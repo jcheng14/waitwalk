@@ -54,7 +54,7 @@ export function fromOsm(data) {
   const lat=e.lat??e.center?.lat,lon=e.lon??e.center?.lon;
   if(!inRange(lat,lon))continue;
   const wiki=String(t.wikidata||'');
-  places.push({id:e.type+'/'+e.id,name:String(t.name).slice(0,120),category,coords:[lat,lon],nodes:e.nodes?.filter(n=>points.has(n)),node:e.type==='node'?e.id:undefined,homepage:safeUrl(t.website||t['contact:website']),source:'https://www.openstreetmap.org/'+e.type+'/'+e.id,photo:/^Q\d+$/.test(wiki)?'https://www.wikidata.org/wiki/'+wiki:null,hours:t.opening_hours||null});
+  places.push({id:e.type+'/'+e.id,name:String(t.name).slice(0,120),names:{en:typeof t['name:en']==='string'?t['name:en'].slice(0,120):undefined,zh:typeof (t['name:zh-Hans']||t['name:zh'])==='string'?(t['name:zh-Hans']||t['name:zh']).slice(0,120):undefined},category,coords:[lat,lon],nodes:e.nodes?.filter(n=>points.has(n)),node:e.type==='node'?e.id:undefined,homepage:safeUrl(t.website||t['contact:website']),source:'https://www.openstreetmap.org/'+e.type+'/'+e.id,photo:/^Q\d+$/.test(wiki)?'https://www.wikidata.org/wiki/'+wiki:null,hours:t.opening_hours||null});
  }
  return {points,edges,linkable,places,mapWays};
 }
@@ -145,7 +145,7 @@ export function planWalk(graph, options){
     }
    }
    const stopCoords=boundary?points.get(foot.key):p.coords;
-   const checkpoints=[...along.map(a=>({...a,plannedStop:false})),{id:p.id,name:p.name,category:p.category,coords:stopCoords,atMinute:out,plannedStop:true}].sort((a,b)=>a.atMinute-b.atMinute||Number(b.plannedStop)-Number(a.plannedStop)).map((a,i)=>({...a,sequence:i+1}));
+   const checkpoints=[...along.map(a=>({...a,plannedStop:false})),{id:p.id,name:p.name,names:p.names,demo:p.demo,category:p.category,coords:stopCoords,atMinute:out,plannedStop:true}].sort((a,b)=>a.atMinute-b.atMinute||Number(b.plannedStop)-Number(a.plannedStop)).map((a,i)=>({...a,sequence:i+1}));
    return {...p,coords:stopCoords,mappedStart:points.get(start.key),mappedStop:points.get(foot.key),out,back:retMinutes,stay,total:out+retMinutes+stay+BUFFER,walkMeters:Math.round(outMeters+retMeters),waypoints:legA,returnWaypoints:returning,approxAccessMeters:Math.round(start.m+access),kind,along,checkpoints};
   };
   const returnKeys=path(end.prev,start.key,foot.key).reverse();

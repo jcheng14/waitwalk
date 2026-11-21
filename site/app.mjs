@@ -1,14 +1,21 @@
 import {planWalk,planChoices,choiceCaps,inRange} from './engine.mjs';
 import {demoOrigin,demoGraph,loadGraph,findPlaces} from './data.mjs';
-import {renderMap,categoryNames} from './render.mjs';
-const el=id=>document.getElementById(id), dom={};for(const i of ['form','address','search','search-results','demo','live','origin-sample','origin-live','locate','lat','lon','time','time-output','ticks','submit','map','save','status','results'])dom[i]=el(i);
+import {renderMap} from './render.mjs';
+import {isBilingual,localLabel} from './i18n.mjs';
+const el=id=>document.getElementById(id), dom={};for(const i of ['form','language','address','search','search-results','demo','live','origin-sample','origin-live','locate','lat','lon','time','time-output','ticks','submit','map','save','status','results'])dom[i]=el(i);
 const params=new URLSearchParams(location.search);
 const custom=params.get('single')==='1';
+let lang=isBilingual(params.get('lang'))?'bilingual':'en';
+const bilingual=()=>isBilingual(lang);
+const bi=(en,zh)=>bilingual()?en+' · '+zh:en;
+function language(){for(const node of document.querySelectorAll('.cn'))node.hidden=!bilingual();dom.language.setAttribute('aria-pressed',bilingual());}
+dom.language.addEventListener('click',()=>{lang=bilingual()?'en':'bilingual';language();time();if(latest){latest.lang=lang;draw();results()}});
+language();
 if(custom){dom.time.min=15;dom.time.max=90;dom.time.step=1;}
 let isDemo=true,controller=null,selected=-1,latest=null,graph=null,lookupLabel=(params.get('label')||'').slice(0,120);
 const demo=demoGraph();
 function mode(value){isDemo=value;dom.demo.setAttribute('aria-pressed',value);dom.live.setAttribute('aria-pressed',!value);dom['origin-sample'].hidden=!value;dom['origin-live'].hidden=value;}
-function time(){dom['time-output'].value=dom.time.value+' min';for(const button of dom.ticks.querySelectorAll('button'))button.setAttribute('aria-pressed',button.dataset.min===dom.time.value)}
+function time(){dom['time-output'].value=dom.time.value+' '+bi('min','分钟');for(const button of dom.ticks.querySelectorAll('button'))button.setAttribute('aria-pressed',button.dataset.min===dom.time.value)}
 dom.time.addEventListener('input',time);
 dom.ticks.addEventListener('click',e=>{if(e.target.dataset.min){dom.time.value=e.target.dataset.min;time();if(isDemo||latest&&!latest.demo)dom.form.requestSubmit()}});
 dom.demo.addEventListener('click',()=>{placeRun?.abort();dom['search-results'].replaceChildren();mode(true);dom.form.requestSubmit()});
@@ -59,11 +66,11 @@ function results(){
   const item=document.createElement('article');item.className='option';
   const btn=document.createElement('button');btn.className='choice';btn.type='button';btn.setAttribute('aria-pressed',latest.choices?p.cap===latest.minutes:i===selected);
   const n=document.createElement('span');n.className='number';n.textContent=i+1;btn.append(n);
-  const tag=document.createElement('small');tag.textContent=`${p.label} · ${p.kind==='loop'?'loop':'out & back'}`;btn.append(tag);
-  const title=document.createElement('strong');title.textContent=p.name;btn.append(title);item.append(btn);
+  const tag=document.createElement('small');tag.textContent=bi(`${p.label} · ${p.kind==='loop'?'loop':'out & back'}`,p.kind==='loop'?'环线':'原路往返');btn.append(tag);
+  const title=document.createElement('strong');title.textContent=localLabel(p,bilingual());btn.append(title);item.append(btn);
   btn.addEventListener('click',()=>{selected=selected===i?-1:i;if(latest.choices){latest.minutes=p.cap;dom.time.value=p.cap;time()}for(const [j,b] of [...dom.results.querySelectorAll('.choice')].entries())b.setAttribute('aria-pressed',latest.choices?latest.options[j].cap===latest.minutes:selected===j);draw()});
-  const desc=document.createElement('p');desc.textContent=`${p.total} min total: ${p.out+p.back} walking + ${p.stay} ${p.category==='coffee'?'coffee/queue':'at the stop'} + ${latest.buffer} buffer`;item.append(desc);
-  if(p.checkpoints?.length){const order=document.createElement('ol');for(const checkpoint of p.checkpoints){const step=document.createElement('li');step.textContent=checkpoint.name+(checkpoint.plannedStop?' (planned stop)':'');order.append(step)} item.append(order)}
+  const desc=document.createElement('p');desc.textContent=bi(`${p.total} min total: ${p.out+p.back} walking + ${p.stay} ${p.category==='coffee'?'coffee/queue':'at the stop'} + ${latest.buffer} buffer`,`总计${p.total}分钟：步行${p.out+p.back} + ${p.category==='coffee'?'咖啡和排队':'停留'}${p.stay} + 缓冲${latest.buffer}`);item.append(desc);
+  if(p.checkpoints?.length){const order=document.createElement('ol');for(const checkpoint of p.checkpoints){const step=document.createElement('li');step.textContent=localLabel(checkpoint,bilingual())+(checkpoint.plannedStop?' ('+bi('planned stop','计划停留')+')':'');order.append(step)} item.append(order)}
   if(!latest.demo){
    if(p.source)item.append(relink(p.source,'Place details'));
    if(p.homepage)item.append(relink(p.homepage,'Website'));
@@ -86,7 +93,7 @@ dom.form.addEventListener('submit',async e=>{
   const data=live?await loadGraph(input,custom?minutes:60,{signal:thisRun.signal}):demo;
   if(thisRun.signal.aborted)return;
   latest=(custom?planWalk:planChoices)(data,{origin:input,minutes,interest,label:live?(lookupLabel||'Selected starting point'):'Alder & Main'});
-  latest.demo=!live;graph=data;draw();results();
+  latest.demo=!live;latest.lang=lang;graph=data;draw();results();
   dom.status.textContent=latest.options.length?(latest.demo?'Sample neighborhood. The highlighted time changes which route stands out.':'Choose the route you want to take. Small map pins are things to see as you pass.'):
    ({'no-nearby-path':'No mapped walking path starts close enough. Try shifting the starting point.','no-fit':'No mapped stop fits your time and interest. Add time or choose Anything.'}[latest.reason]);
  }catch(err){

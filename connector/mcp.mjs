@@ -3,7 +3,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { Worker } from 'node:worker_threads';
+import { rasterize } from './raster-image.mjs';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
@@ -12,6 +12,7 @@ import { z } from 'zod';
 const run = promisify(execFile);
 const cliPath = fileURLToPath(new URL('../plan-walk.mjs', import.meta.url));
 const interests = z.enum(['any', 'coffee', 'nature', 'photo']).optional();
+const languages = z.enum(['en', 'bilingual']).optional();
 const originShape = {
   lat: z.number().finite().min(-85).max(85).describe('User-confirmed latitude'),
   lon: z.number().finite().min(-180).max(180).describe('User-confirmed longitude'),
@@ -20,7 +21,7 @@ const choiceCaps = [30, 60];
 const selectCap = (minutes) => choiceCaps.findLast((cap) => cap <= minutes);
 const minutesField = z.number().int().min(15).max(90).describe('Total time including return and pickup buffer');
 const input = {
-  lat: originShape.lat.optional(), lon: originShape.lon.optional(), minutes: minutesField, interest: interests,
+  lat: originShape.lat.optional(), lon: originShape.lon.optional(), minutes: minutesField, interest: interests, lang: languages,
   acknowledge_link_location: z.boolean().optional().describe('Set true only after the user agrees to include location in this URL'),
   label: z.string().trim().min(1).max(80).optional().describe('Optional public place name; never include a private address or child name'),
 };
@@ -40,40 +41,15 @@ function siteBase() {
   return url;
 }
 
-function rasterize(plan, mode, timeout, signal) {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted || timeout <= 0) return reject(new Error('Map deadline passed.'));
-    const worker = new Worker(new URL('./raster-worker.mjs', import.meta.url), { workerData: { plan, mode } });
-    let finished = false;
-    const finish = (error, value) => {
-      if (finished) return;
-      finished = true;
-      clearTimeout(timer);
-      signal?.removeEventListener('abort', cancel);
-      if (error) reject(error);
-      else resolve(value);
-      // A blocked native renderer cannot block the MCP event loop or its response.
-      worker.unref();
-      void worker.terminate().catch(() => {});
-    };
-    const cancel = () => finish(new Error('Map rendering cancelled.'));
-    const timer = setTimeout(() => finish(new Error('Map rendering timed out.')), timeout);
-    signal?.addEventListener('abort', cancel, { once: true });
-    worker.once('message', (png) => finish(null, png));
-    worker.once('error', (error) => finish(error));
-    worker.once('exit', () => finish(new Error('Map renderer stopped.')));
-  });
-}
-
 let activePlan = false;
 function setupMcp() {
   const base = siteBase();
-  const server = new McpServer({ name: 'waitwalk', version: '0.1.0' });
+  const server = new McpServer({ name: 'waitwalk', version: '0.1.1' });
   server.registerTool('prepare_walk_link', {
     description: 'Build a link to the self-hosted WaitWalk map with a time budget. Omit the location by default; only include a point if the user agrees to put it into the app link. Does not contact any provider, include route results, or check opening hours.',
     inputSchema: input,
     annotations: { ...annotations, openWorldHint: false },
-  }, async ({ lat, lon, minutes, interest, label, acknowledge_link_location }) => {
+  }, async ({ lat, lon, minutes, interest, lang, label, acknowledge_link_location }) => {
     if (!base) return toolError('No map is configured. The operator must set WAITWALK_SITE_URL.');
     const url = new URL(base);
     if ((lat === undefined) !== (lon === undefined)) return toolError('Provide both latitude and longitude, or neither.');
@@ -84,6 +60,7 @@ function setupMcp() {
       params.set('lon', String(lon));
     }
     if (interest) params.set('interest', interest);
+    if (lang) params.set('lang', lang);
     if (label) params.set('label', label);
     url.search = params;
     return output({ url: url.href, note: (lat !== undefined || label !== undefined ? 'Link includes a starting location. ' : 'Link does not include a starting location. ') + 'The app does not request live data until the user submits the form.' });
@@ -93,14 +70,14 @@ function setupMcp() {
     inputSchema: {
       mode: z.enum(['demo', 'live']).describe('Explicitly choose demo or live'),
       lat: originShape.lat.optional(), lon: originShape.lon.optional(),
-      minutes: minutesField.optional().describe('User time available; highlights the highest listed cap at or below this value'), interest: interests,
+      minutes: minutesField.optional().describe('User time available; highlights the highest listed cap at or below this value'), interest: interests, lang: languages,
       acknowledge_location_sharing: z.boolean().optional().describe('Set true only after the user authorizes sharing coordinates with the map data provider'),
     },
     annotations,
   }, async (args, { signal }) => {
-    const { mode, lat, lon, minutes = 30, interest = 'any', acknowledge_location_sharing } = args;
+    const { mode, lat, lon, minutes = 30, interest = 'any', lang = 'en', acknowledge_location_sharing } = args;
     const highlighted_minutes = selectCap(minutes) ?? null;
-    const command = [cliPath, '--choices', '--minutes', String(highlighted_minutes ?? minutes), '--interest', interest];
+    const command = [cliPath, '--choices', '--minutes', String(highlighted_minutes ?? minutes), '--interest', interest, '--lang', lang];
     if (mode === 'live') {
       if (lat === undefined || lon === undefined) return toolError('Live planning requires latitude and longitude.');
       if (!acknowledge_location_sharing) return toolError('Live planning requires explicit permission to share the start point with the map data provider.');
@@ -123,8 +100,8 @@ function setupMcp() {
       const data = { mode, requested_minutes: minutes, highlighted_minutes, caps: choiceCaps, plan };
       const result = output(data);
       try {
-        const png = await rasterize(plan, mode, Math.min(3_000, deadline - performance.now()), signal);
-        result.content.unshift({ type: 'image', data: png, mimeType: 'image/png' });
+        const png = await rasterize(plan, { timeout: Math.min(3_000, deadline - performance.now()), signal });
+        result.content.unshift({ type: 'image', data: png.toString('base64'), mimeType: 'image/png' });
       } catch {
         result.content.push({ type: 'text', text: 'Inline map rendering is unavailable. The route data is still provided.' });
       }

@@ -23,6 +23,8 @@ A live map is a snapshot of map data and a time estimate. It does not guarantee 
 
 The optional `minutes` argument highlights the highest of the two caps no greater than the available time; it does not hide the other option and highlights neither when there are fewer than 30 minutes. No-fit caps are explicitly shown. The adapter bounds planner and renderer time independently (24 s and 3 s respectively, ≤28 s target at the adapter, excluding client and network overhead). Live data latency depends on the Overpass service, so 10 s is a target, not a promise. The browser and fixture demo provide fallbacks.
 
+The MCP tools accept an optional `lang: "bilingual"`. For a downloadable PNG directly from the CLI, run `node plan-walk.mjs --demo --choices --lang bilingual --png --output waitwalk-demo.png` from the project root after installing this adapter’s dependencies. The bundled [WaitWalk CJK derivative](fonts/README.md) renders the demo’s Chinese labels even without installed CJK fonts.
+
 ## Optional Streamable HTTP development endpoint
 
 ```sh
